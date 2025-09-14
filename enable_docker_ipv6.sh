@@ -27,14 +27,44 @@ echo "[OK] 已写入 $CONFIG_FILE"
 systemctl restart docker
 sleep 3
 
-# 检查 IPv6 是否启用
-echo "=== Docker 信息 ==="
-docker info | grep IPv6 || echo "未检测到 IPv6"
+echo "=== Docker IPv6 检测 ==="
+if docker network inspect bridge | grep -q '"EnableIPv6": true'; then
+    echo "[OK] Docker bridge 网络已启用 IPv6"
+else
+    echo "[ERROR] Docker bridge 网络未启用 IPv6"
+fi
 
-# 查看 bridge 网络
-echo "=== Docker 默认网络配置 ==="
-docker network inspect bridge | grep -E 'EnableIPv6|Subnet'
+# 宿主机 IPv6 出口
+echo "=== 宿主机 IPv6 出口地址 ==="
+host_ip=$(curl -6 -s --max-time 10 ifconfig.io || echo "获取失败")
+echo "$host_ip"
 
-# 启动测试容器
-echo "=== 启动测试容器 ==="
-docker run --rm busybox ping6 -c 3 google.com || echo "容器 IPv6 测试失败"
+if [ "$host_ip" != "获取失败" ]; then
+    host_isp=$(curl -6 -s https://ipinfo.io/$host_ip/json | grep -E '"org"' | sed 's/.*: "\(.*\)".*/\1/')
+    echo "宿主机出口 ISP/ASN: $host_isp"
+fi
+
+# 测试容器 IPv6 地址
+echo "=== 测试容器 IPv6 地址 ==="
+docker run --rm busybox ip -6 addr | grep "inet6" || echo "容器未分配 IPv6 地址"
+
+# 容器 IPv6 出口
+echo "=== 容器 IPv6 出口地址 ==="
+container_ip=$(docker run --rm curlimages/curl -6 -s --max-time 10 ifconfig.io || echo "获取失败")
+echo "$container_ip"
+
+if [ "$container_ip" != "获取失败" ]; then
+    container_isp=$(docker run --rm curlimages/curl -6 -s https://ipinfo.io/$container_ip/json | grep -E '"org"' | sed 's/.*: "\(.*\)".*/\1/')
+    echo "容器出口 ISP/ASN: $container_isp"
+fi
+
+# 判断是否和宿主机一致
+if [ "$host_ip" = "$container_ip" ] && [ "$host_ip" != "获取失败" ]; then
+    echo "[OK] 容器出口与宿主机一致 → 可能走的是 WARP"
+else
+    echo "[INFO] 容器出口与宿主机不同"
+fi
+
+# 测试 IPv6 连通性
+echo "=== 容器 IPv6 连通性测试 ==="
+docker run --rm busybox ping6 -c 3 google.com || echo "容器 IPv6 出口不可用"

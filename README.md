@@ -1,4 +1,4 @@
-# ipv6vps-docker
+# ipv6vps-docker   暂不支持alpine
 开启ipv6网络
 
 bash <(curl -fsSL https://raw.githubusercontent.com/pingmike2/ipv6vps-docker/main/enable_docker_ipv6.sh)
